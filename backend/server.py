@@ -47,22 +47,43 @@ def slugify_label(value: str) -> str:
     return MULTISPACE_REGEX.sub("-", cleaned).strip("-")
 
 
+def tokenize(text: str):
+    if not text:
+        return []
+
+    return [token for token in text.split(" ") if token]
+
+
 def score_phrase_match(query: str, candidate: str) -> float:
     if not query or not candidate:
-      return 0.0
+        return 0.0
 
     if query == candidate:
-      return 1.0
+        return 1.0
 
-    if candidate in query or query in candidate:
-      return 0.9
-
-    query_tokens = [token for token in query.split(" ") if token]
-    candidate_tokens = [token for token in candidate.split(" ") if token]
+    query_tokens = tokenize(query)
+    candidate_tokens = tokenize(candidate)
     if not query_tokens or not candidate_tokens:
-      return 0.0
+        return 0.0
 
-    overlap = len([token for token in query_tokens if token in candidate_tokens])
+    # Reject tiny fragments so a single letter does not trigger a full phrase.
+    if len(query_tokens) == 1 and len(query_tokens[0]) < 3:
+        return 0.0
+
+    shorter_tokens, longer_tokens = (
+        (query_tokens, candidate_tokens)
+        if len(query_tokens) <= len(candidate_tokens)
+        else (candidate_tokens, query_tokens)
+    )
+
+    # Allow phrase-prefix matching like "السلام عليكم" -> "السلام عليكم ورحمة الله"
+    if len(shorter_tokens) >= 2 and longer_tokens[: len(shorter_tokens)] == shorter_tokens:
+        return 0.75 + (len(shorter_tokens) / len(longer_tokens)) * 0.2
+
+    overlap = len(set(query_tokens) & set(candidate_tokens))
+    if overlap < 2:
+        return 0.0
+
     return overlap / max(len(query_tokens), len(candidate_tokens))
 
 
@@ -202,7 +223,7 @@ def find_best_match(query: str):
     ranked = []
     for phrase in phrases:
         score = score_phrase_match(normalized_query, phrase["text_normalized"])
-        if score >= 0.45:
+        if score >= 0.6:
             ranked.append((score, phrase["priority"], phrase))
 
     if not ranked:

@@ -4,47 +4,72 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import * as THREE from 'three'
 
 const AVATAR_URL = '/avatar/694ab0da452afe2bbfaa4e43.glb'
-const HEAD_BONE_CANDIDATES = [
-  'Head',
-  'head',
-  'Wolf3D_Head',
-  'mixamorigHead',
-  'Neck',
-  'neck',
-]
+const IDLE_URL = '/animations/M_Standing_Idle_Variations_001.glb'
+const TRANSITION_DURATION = 0.2
 
-function findHeadBone(root) {
-  const exactMatches = []
-  const partialMatches = []
+function captureRestState(root) {
+  const nodeStates = new Map()
+  const morphStates = new Map()
 
   root.traverse((child) => {
-    if (!child.isBone) {
-      return
-    }
+    nodeStates.set(child.uuid, {
+      position: child.position.clone(),
+      quaternion: child.quaternion.clone(),
+      scale: child.scale.clone(),
+    })
 
-    if (HEAD_BONE_CANDIDATES.includes(child.name)) {
-      exactMatches.push(child)
-      return
-    }
-
-    const normalizedName = child.name.toLowerCase()
-    if (normalizedName.includes('head') || normalizedName.includes('neck')) {
-      partialMatches.push(child)
+    if (child.morphTargetInfluences) {
+      morphStates.set(child.uuid, [...child.morphTargetInfluences])
     }
   })
 
-  return exactMatches[0] ?? partialMatches[0] ?? null
+  return { nodeStates, morphStates }
 }
 
-export function Avatar({ mousePosition, animationUrl }) {
+function restoreRestState(root, restState) {
+  if (!root || !restState) {
+    return
+  }
+
+  root.traverse((child) => {
+    const nodeState = restState.nodeStates.get(child.uuid)
+    if (nodeState) {
+      child.position.copy(nodeState.position)
+      child.quaternion.copy(nodeState.quaternion)
+      child.scale.copy(nodeState.scale)
+    }
+
+    if (child.morphTargetInfluences) {
+      const morphState = restState.morphStates.get(child.uuid)
+      if (morphState) {
+        child.morphTargetInfluences.splice(0, child.morphTargetInfluences.length, ...morphState)
+      }
+    }
+  })
+}
+
+function buildIdleClip(clip) {
+  if (!clip) {
+    return null
+  }
+
+  const filteredTracks = clip.tracks.filter((track) => track.name !== 'Hips.position')
+  if (!filteredTracks.length) {
+    return null
+  }
+
+  return new THREE.AnimationClip('idle', clip.duration, filteredTracks.map((track) => track.clone()))
+}
+
+export function Avatar({ playbackRequest }) {
   const { size } = useThree()
   const group = useRef()
   const [avatarScene, setAvatarScene] = useState(null)
-  const headBone = useRef(null)
   const mixerRef = useRef(null)
+  const idleActionRef = useRef(null)
   const activeActionRef = useRef(null)
-  const targetRotation = useRef({ x: 0, y: 0 })
-  const baseRotation = useRef({ x: 0, y: 0 })
+  const endingBlendStartedRef = useRef(false)
+  const restStateRef = useRef(null)
   const isMobile = size.width < 640
   const avatarScale = isMobile ? 1.22 : 1.5
   const avatarPositionY = isMobile ? -1.6 : -1.72
@@ -61,17 +86,6 @@ export function Avatar({ mousePosition, animationUrl }) {
         }
 
         const loadedScene = gltf.scene
-        const detectedHeadBone = findHeadBone(loadedScene)
-
-        if (!detectedHeadBone) {
-          console.warn('Head bone not found in GLB avatar; mouse tracking will be disabled')
-        } else {
-          headBone.current = detectedHeadBone
-          baseRotation.current = {
-            x: detectedHeadBone.rotation.x,
-            y: detectedHeadBone.rotation.y,
-          }
-        }
 
         loadedScene.traverse((child) => {
           if (child.isMesh) {
@@ -83,6 +97,7 @@ export function Avatar({ mousePosition, animationUrl }) {
           }
         })
 
+        restStateRef.current = captureRestState(loadedScene)
         setAvatarScene(loadedScene)
       },
       undefined,
@@ -116,11 +131,66 @@ export function Avatar({ mousePosition, animationUrl }) {
       return undefined
     }
 
-    mixerRef.current = mixerRef.current || new THREE.AnimationMixer(avatarScene)
+    const mixer = new THREE.AnimationMixer(avatarScene)
+    mixerRef.current = mixer
+    const loader = new GLTFLoader()
+    let isMounted = true
+
+    const handleFinished = () => {
+      const finishedAction = activeActionRef.current
+      activeActionRef.current = null
+      endingBlendStartedRef.current = false
+
+      if (idleActionRef.current) {
+        idleActionRef.current.enabled = true
+        idleActionRef.current.setEffectiveTimeScale(1)
+        idleActionRef.current.setEffectiveWeight(1)
+        idleActionRef.current.fadeIn(TRANSITION_DURATION)
+      }
+
+      if (finishedAction) {
+        window.setTimeout(() => {
+          finishedAction.stop()
+        }, TRANSITION_DURATION * 1000 + 20)
+      }
+    }
+
+    mixer.addEventListener('finished', handleFinished)
+
+    loader.load(
+      IDLE_URL,
+      (gltf) => {
+        if (!isMounted || !mixerRef.current || !gltf.animations?.length) {
+          return
+        }
+
+        const idleClip = buildIdleClip(gltf.animations[0])
+        if (!idleClip) {
+          console.warn('Idle animation has no usable tracks')
+          return
+        }
+
+        const idleAction = mixer.clipAction(idleClip)
+        idleAction.setLoop(THREE.LoopRepeat, Infinity)
+        idleAction.clampWhenFinished = false
+        idleAction.enabled = true
+        idleAction.setEffectiveWeight(1)
+        idleAction.play()
+        idleActionRef.current = idleAction
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading idle clip:', error)
+      }
+    )
 
     return () => {
+      isMounted = false
       activeActionRef.current?.stop()
-      mixerRef.current?.stopAllAction()
+      idleActionRef.current?.stop()
+      idleActionRef.current = null
+      mixer.removeEventListener('finished', handleFinished)
+      mixer.stopAllAction()
       mixerRef.current = null
     }
   }, [avatarScene])
@@ -131,27 +201,33 @@ export function Avatar({ mousePosition, animationUrl }) {
     }
 
     activeActionRef.current?.stop()
-    mixerRef.current.stopAllAction()
+    restoreRestState(avatarScene, restStateRef.current)
 
-    if (!animationUrl) {
+    if (!playbackRequest?.url) {
       return undefined
     }
 
     const loader = new GLTFLoader()
     let isMounted = true
+    endingBlendStartedRef.current = false
 
     loader.load(
-      animationUrl,
+      playbackRequest.url,
       (gltf) => {
         if (!isMounted || !gltf.animations?.length || !mixerRef.current) {
           return
         }
 
         const clip = gltf.animations[0]
+        if (idleActionRef.current) {
+          idleActionRef.current.enabled = true
+          idleActionRef.current.fadeOut(TRANSITION_DURATION)
+        }
         const action = mixerRef.current.clipAction(clip)
         action.reset()
-        action.setLoop(THREE.LoopRepeat, Infinity)
+        action.setLoop(THREE.LoopOnce, 1)
         action.clampWhenFinished = false
+        action.fadeIn(0.1)
         action.play()
         activeActionRef.current = action
       },
@@ -163,37 +239,34 @@ export function Avatar({ mousePosition, animationUrl }) {
 
     return () => {
       isMounted = false
-      activeActionRef.current?.stop()
+      if (activeActionRef.current) {
+        activeActionRef.current.stop()
+        activeActionRef.current = null
+        endingBlendStartedRef.current = false
+        idleActionRef.current?.setEffectiveWeight(1)
+      }
     }
-  }, [animationUrl, avatarScene])
+  }, [avatarScene, playbackRequest])
 
   useFrame((_state, delta) => {
     if (mixerRef.current) {
       mixerRef.current.update(delta)
     }
 
-    if (mousePosition && headBone.current) {
-      targetRotation.current.y = THREE.MathUtils.lerp(
-        targetRotation.current.y,
-        mousePosition.x * 0.25,
-        delta * 1.5
-      )
-      targetRotation.current.x = THREE.MathUtils.lerp(
-        targetRotation.current.x,
-        -mousePosition.y * 0.12,
-        delta * 1.5
-      )
+    const activeAction = activeActionRef.current
+    const idleAction = idleActionRef.current
+    if (!activeAction || !idleAction || endingBlendStartedRef.current) {
+      return
+    }
 
-      headBone.current.rotation.y = THREE.MathUtils.lerp(
-        headBone.current.rotation.y,
-        baseRotation.current.y + targetRotation.current.y,
-        0.05
-      )
-      headBone.current.rotation.x = THREE.MathUtils.lerp(
-        headBone.current.rotation.x,
-        baseRotation.current.x + targetRotation.current.x,
-        0.05
-      )
+    const remaining = activeAction.getClip().duration - activeAction.time
+    if (remaining <= TRANSITION_DURATION) {
+      endingBlendStartedRef.current = true
+      idleAction.enabled = true
+      idleAction.setEffectiveTimeScale(1)
+      idleAction.setEffectiveWeight(1)
+      idleAction.fadeIn(TRANSITION_DURATION)
+      activeAction.fadeOut(TRANSITION_DURATION)
     }
   })
 

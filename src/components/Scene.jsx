@@ -56,7 +56,7 @@ function LoadingFallback() {
   )
 }
 
-export function Scene({ mousePosition, animationUrl }) {
+export function Scene({ playbackRequest }) {
   return (
     <Canvas
       shadows
@@ -87,7 +87,7 @@ export function Scene({ mousePosition, animationUrl }) {
           floatIntensity={0.3}
           floatingRange={[-0.05, 0.05]}
         >
-          <Avatar mousePosition={mousePosition} animationUrl={animationUrl} />
+          <Avatar playbackRequest={playbackRequest} />
         </Float>
       </Suspense>
       

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { Scene } from './components/Scene'
 import { Interface } from './components/Interface'
 import { AdminApp } from './components/admin/AdminApp'
@@ -6,21 +6,8 @@ import { AdminApp } from './components/admin/AdminApp'
 function App() {
   const isAdminRoute = window.location.pathname.startsWith('/admin')
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const [animationUrl, setAnimationUrl] = useState(null)
+  const [playbackRequest, setPlaybackRequest] = useState(null)
   const [lookupState, setLookupState] = useState({ status: 'idle', match: null })
-
-  // Track mouse position for avatar head tracking
-  const handleMouseMove = useCallback((e) => {
-    const x = (e.clientX / window.innerWidth) * 2 - 1
-    const y = (e.clientY / window.innerHeight) * 2 - 1
-    setMousePosition({ x, y })
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove)
-    return () => window.removeEventListener('mousemove', handleMouseMove)
-  }, [handleMouseMove])
 
   // Handle message submission
   const handleSend = useCallback(async (message) => {
@@ -40,7 +27,11 @@ function App() {
       }
 
       if (payload.match?.animation?.file_url) {
-        setAnimationUrl(payload.match.animation.file_url)
+        setPlaybackRequest({
+          key: crypto.randomUUID(),
+          url: payload.match.animation.file_url,
+          title: payload.match.animation.title_ar,
+        })
         setLookupState({ status: 'matched', match: payload.match })
       } else {
         setLookupState({ status: 'not_found', match: null })
@@ -70,7 +61,7 @@ function App() {
 
   return (
     <div className="relative w-full h-full overflow-hidden">
-      <Scene mousePosition={mousePosition} animationUrl={animationUrl} />
+      <Scene playbackRequest={playbackRequest} />
       <Interface onSend={handleSend} lookupState={lookupState} />
     </div>
   )

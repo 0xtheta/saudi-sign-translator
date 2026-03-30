@@ -43,17 +43,33 @@ export function scorePhraseMatch(query, candidate) {
     return 1
   }
 
-  if (candidate.includes(query) || query.includes(candidate)) {
-    return 0.9
-  }
-
   const queryTokens = tokenize(query)
   const candidateTokens = tokenize(candidate)
   if (!queryTokens.length || !candidateTokens.length) {
     return 0
   }
 
+  if (queryTokens.length === 1 && queryTokens[0].length < 3) {
+    return 0
+  }
+
+  const [shorterTokens, longerTokens] =
+    queryTokens.length <= candidateTokens.length
+      ? [queryTokens, candidateTokens]
+      : [candidateTokens, queryTokens]
+
+  if (
+    shorterTokens.length >= 2 &&
+    shorterTokens.every((token, index) => token === longerTokens[index])
+  ) {
+    return 0.75 + (shorterTokens.length / longerTokens.length) * 0.2
+  }
+
   const overlap = queryTokens.filter((token) => candidateTokens.includes(token)).length
+  if (overlap < 2) {
+    return 0
+  }
+
   return overlap / Math.max(queryTokens.length, candidateTokens.length)
 }
 
@@ -68,7 +84,7 @@ export function findBestAnimationMatch(query, animations, phrases) {
       phrase,
       score: scorePhraseMatch(normalizedQuery, phrase.text_normalized),
     }))
-    .filter((entry) => entry.score >= 0.45)
+    .filter((entry) => entry.score >= 0.6)
     .sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
