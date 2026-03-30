@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+PROJECT_NOTES.md
+backend/data/
+backend/uploads/
 
 # Editor directories and files
 .vscode/*

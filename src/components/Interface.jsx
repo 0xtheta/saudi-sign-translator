@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Mic, MicOff } from 'lucide-react'
 
-export function Interface({ onSend }) {
+export function Interface({ onSend, lookupState }) {
   void motion
   const [message, setMessage] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -115,7 +115,13 @@ export function Interface({ onSend }) {
 
             <div className="flex items-center justify-between border-t border-white/10 pt-4">
               <p className="text-white/30 text-sm tracking-wide hidden sm:block">
-                Press Enter to send • Shift+Enter for new line
+                {lookupState?.status === 'loading'
+                  ? 'Looking for a matching sign...'
+                  : lookupState?.status === 'matched'
+                    ? `Matched: ${lookupState.match?.animation?.title_ar ?? 'animation'}`
+                    : lookupState?.status === 'not_found'
+                      ? 'No matching sign found in the local database'
+                      : 'Press Enter to send • Shift+Enter for new line'}
               </p>
 
               <div className="flex items-center gap-3 ml-auto">

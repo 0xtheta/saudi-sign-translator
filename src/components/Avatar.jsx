@@ -36,11 +36,13 @@ function findHeadBone(root) {
   return exactMatches[0] ?? partialMatches[0] ?? null
 }
 
-export function Avatar({ mousePosition }) {
+export function Avatar({ mousePosition, animationUrl }) {
   const { size } = useThree()
   const group = useRef()
   const [avatarScene, setAvatarScene] = useState(null)
   const headBone = useRef(null)
+  const mixerRef = useRef(null)
+  const activeActionRef = useRef(null)
   const targetRotation = useRef({ x: 0, y: 0 })
   const baseRotation = useRef({ x: 0, y: 0 })
   const isMobile = size.width < 640
@@ -109,7 +111,67 @@ export function Avatar({ mousePosition }) {
     }
   }, [avatarScene])
 
+  useEffect(() => {
+    if (!avatarScene) {
+      return undefined
+    }
+
+    mixerRef.current = mixerRef.current || new THREE.AnimationMixer(avatarScene)
+
+    return () => {
+      activeActionRef.current?.stop()
+      mixerRef.current?.stopAllAction()
+      mixerRef.current = null
+    }
+  }, [avatarScene])
+
+  useEffect(() => {
+    if (!avatarScene || !mixerRef.current) {
+      return undefined
+    }
+
+    activeActionRef.current?.stop()
+    mixerRef.current.stopAllAction()
+
+    if (!animationUrl) {
+      return undefined
+    }
+
+    const loader = new GLTFLoader()
+    let isMounted = true
+
+    loader.load(
+      animationUrl,
+      (gltf) => {
+        if (!isMounted || !gltf.animations?.length || !mixerRef.current) {
+          return
+        }
+
+        const clip = gltf.animations[0]
+        const action = mixerRef.current.clipAction(clip)
+        action.reset()
+        action.setLoop(THREE.LoopRepeat, Infinity)
+        action.clampWhenFinished = false
+        action.play()
+        activeActionRef.current = action
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading animation clip:', error)
+      }
+    )
+
+    return () => {
+      isMounted = false
+      activeActionRef.current?.stop()
+    }
+  }, [animationUrl, avatarScene])
+
   useFrame((_state, delta) => {
+    if (mixerRef.current) {
+      mixerRef.current.update(delta)
+    }
+
     if (mousePosition && headBone.current) {
       targetRotation.current.y = THREE.MathUtils.lerp(
         targetRotation.current.y,

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "backend": "python3 backend/server.py",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
