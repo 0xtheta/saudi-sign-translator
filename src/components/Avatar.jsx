@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import * as THREE from 'three'
 
 const AVATAR_URL = '/avatar/694ab0da452afe2bbfaa4e43.glb'
-const IDLE_URL = '/animations/M_Standing_Idle_Variations_001.glb'
+const IDLE_URL = '/animations/M_Standing_Idle_001.glb'
 const TRANSITION_DURATION = 0.2
 
 function captureRestState(root) {
@@ -286,7 +286,7 @@ export function Avatar({ playbackRequest }) {
       ref={group}
       position={[0, avatarPositionY, 0]}
       scale={avatarScale}
-      rotation={[0, 0.18, 0]}
+      rotation={[0, 0, 0]}
     />
   )
 }

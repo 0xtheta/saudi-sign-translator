@@ -47,46 +47,6 @@ def slugify_label(value: str) -> str:
     return MULTISPACE_REGEX.sub("-", cleaned).strip("-")
 
 
-def tokenize(text: str):
-    if not text:
-        return []
-
-    return [token for token in text.split(" ") if token]
-
-
-def score_phrase_match(query: str, candidate: str) -> float:
-    if not query or not candidate:
-        return 0.0
-
-    if query == candidate:
-        return 1.0
-
-    query_tokens = tokenize(query)
-    candidate_tokens = tokenize(candidate)
-    if not query_tokens or not candidate_tokens:
-        return 0.0
-
-    # Reject tiny fragments so a single letter does not trigger a full phrase.
-    if len(query_tokens) == 1 and len(query_tokens[0]) < 3:
-        return 0.0
-
-    shorter_tokens, longer_tokens = (
-        (query_tokens, candidate_tokens)
-        if len(query_tokens) <= len(candidate_tokens)
-        else (candidate_tokens, query_tokens)
-    )
-
-    # Allow phrase-prefix matching like "السلام عليكم" -> "السلام عليكم ورحمة الله"
-    if len(shorter_tokens) >= 2 and longer_tokens[: len(shorter_tokens)] == shorter_tokens:
-        return 0.75 + (len(shorter_tokens) / len(longer_tokens)) * 0.2
-
-    overlap = len(set(query_tokens) & set(candidate_tokens))
-    if overlap < 2:
-        return 0.0
-
-    return overlap / max(len(query_tokens), len(candidate_tokens))
-
-
 def dict_factory(cursor, row):
     return {cursor.description[index][0]: value for index, value in enumerate(row)}
 
@@ -121,7 +81,6 @@ def initialize_database():
           animation_id TEXT NOT NULL,
           text_original TEXT NOT NULL,
           text_normalized TEXT NOT NULL,
-          priority INTEGER NOT NULL DEFAULT 100,
           created_at TEXT NOT NULL,
           FOREIGN KEY (animation_id) REFERENCES animations(id) ON DELETE CASCADE
         )
@@ -154,9 +113,9 @@ def list_phrases():
     connection = get_connection()
     rows = connection.execute(
         """
-        SELECT id, animation_id, text_original, text_normalized, priority, created_at
+        SELECT id, animation_id, text_original, text_normalized, created_at
         FROM phrases
-        ORDER BY priority DESC, created_at DESC
+        ORDER BY created_at DESC
         """
     ).fetchall()
     connection.close()
@@ -180,8 +139,8 @@ def insert_phrase(record):
     connection = get_connection()
     connection.execute(
         """
-        INSERT INTO phrases (id, animation_id, text_original, text_normalized, priority, created_at)
-        VALUES (:id, :animation_id, :text_original, :text_normalized, :priority, :created_at)
+        INSERT INTO phrases (id, animation_id, text_original, text_normalized, created_at)
+        VALUES (:id, :animation_id, :text_original, :text_normalized, :created_at)
         """,
         record,
     )
@@ -217,32 +176,41 @@ def find_best_match(query: str):
     if not normalized_query:
         return None
 
-    animations = list_animations()
-    phrases = list_phrases()
+    connection = get_connection()
+    phrase = connection.execute(
+        """
+        SELECT id, animation_id, text_original, text_normalized, created_at
+        FROM phrases
+        WHERE text_normalized = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (normalized_query,),
+    ).fetchone()
 
-    ranked = []
-    for phrase in phrases:
-        score = score_phrase_match(normalized_query, phrase["text_normalized"])
-        if score >= 0.6:
-            ranked.append((score, phrase["priority"], phrase))
-
-    if not ranked:
+    if not phrase:
+        connection.close()
         return None
 
-    ranked.sort(key=lambda item: (-item[0], -item[1]))
-    best_score, _priority, best_phrase = ranked[0]
-    animation = next(
-        (entry for entry in animations if entry["id"] == best_phrase["animation_id"]),
-        None,
-    )
+    animation = connection.execute(
+        """
+        SELECT id, slug, title_ar, notes, file_name, file_path, file_size, created_at
+        FROM animations
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (phrase["animation_id"],),
+    ).fetchone()
+    connection.close()
+
     if not animation:
         return None
 
     return {
         "animation": serialize_animation(animation),
-        "phrase": best_phrase,
+        "phrase": phrase,
         "normalized_query": normalized_query,
-        "score": best_score,
+        "match_type": "exact_alias",
     }
 
 
@@ -472,8 +440,6 @@ class AppHandler(BaseHTTPRequestHandler):
 
         animation_id = payload.get("animation_id", "").strip()
         text_original = payload.get("text_original", "").strip()
-        priority = int(payload.get("priority", 100))
-
         if not animation_id or not text_original:
             return json_response(
                 self,
@@ -481,12 +447,38 @@ class AppHandler(BaseHTTPRequestHandler):
                 {"error": "animation_id and text_original are required"},
             )
 
+        normalized_text = normalize_arabic_text(text_original)
+        if not normalized_text:
+            return json_response(
+                self,
+                HTTPStatus.BAD_REQUEST,
+                {"error": "Alias becomes empty after normalization"},
+            )
+
+        connection = get_connection()
+        existing_phrase = connection.execute(
+            """
+            SELECT id
+            FROM phrases
+            WHERE text_normalized = ?
+            LIMIT 1
+            """,
+            (normalized_text,),
+        ).fetchone()
+        connection.close()
+
+        if existing_phrase:
+            return json_response(
+                self,
+                HTTPStatus.CONFLICT,
+                {"error": "This normalized alias already exists"},
+            )
+
         record = {
             "id": str(uuid.uuid4()),
             "animation_id": animation_id,
             "text_original": text_original,
-            "text_normalized": normalize_arabic_text(text_original),
-            "priority": priority,
+            "text_normalized": normalized_text,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         insert_phrase(record)
