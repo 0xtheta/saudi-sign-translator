@@ -1,14 +1,5 @@
 # Saudi Sign Translator
 
-Local college project for matching normalized Arabic words or phrases to pre-made Saudi Sign Language avatar animations.
-
-## Stack
-
-- React + Vite frontend
-- Python local backend
-- SQLite database
-- RPM avatar with `.glb` sign animations
-
 ## Development
 
 Requirements:
