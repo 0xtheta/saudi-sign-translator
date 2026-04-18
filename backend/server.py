@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -11,6 +10,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from arabic import normalize_arabic_text, slugify_label
+from whisper_service import transcribe_audio_bytes
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -20,31 +22,7 @@ DB_PATH = DATA_DIR / "app.db"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-DIACRITICS_REGEX = re.compile(r"[\u064B-\u065F\u0670\u06D6-\u06ED]")
-NON_WORD_GAP_REGEX = re.compile(r"[^\w\s\u0600-\u06FF]+", re.UNICODE)
-MULTISPACE_REGEX = re.compile(r"\s+")
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
-
-
-def normalize_arabic_text(value: str) -> str:
-    normalized = value.strip()
-    normalized = DIACRITICS_REGEX.sub("", normalized)
-    normalized = normalized.replace("\u0640", "")
-    normalized = re.sub(r"[إأآٱ]", "ا", normalized)
-    normalized = normalized.replace("ى", "ي")
-    normalized = normalized.replace("ؤ", "و")
-    normalized = normalized.replace("ئ", "ي")
-    normalized = normalized.replace("ة", "ه")
-    normalized = NON_WORD_GAP_REGEX.sub(" ", normalized)
-    normalized = MULTISPACE_REGEX.sub(" ", normalized)
-    return normalized.strip()
-
-
-def slugify_label(value: str) -> str:
-    lowered = value.strip().lower()
-    cleaned = re.sub(r"[^\w\s\u0600-\u06FF-]+", "", lowered, flags=re.UNICODE)
-    return MULTISPACE_REGEX.sub("-", cleaned).strip("-")
 
 
 def dict_factory(cursor, row):
@@ -354,6 +332,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
             return self.handle_phrase_create()
 
+        if parsed.path == "/api/transcribe":
+            return self.handle_transcription()
+
         return json_response(self, HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def do_DELETE(self):
@@ -483,6 +464,54 @@ class AppHandler(BaseHTTPRequestHandler):
         }
         insert_phrase(record)
         return json_response(self, HTTPStatus.CREATED, {"phrase": record})
+
+    def handle_transcription(self):
+        fields, files = parse_multipart_request(self)
+        del fields
+
+        audio_item = files.get("audio")
+        if audio_item is None or not audio_item.get("content"):
+            return json_response(
+                self,
+                HTTPStatus.BAD_REQUEST,
+                {"error": "audio file is required"},
+            )
+
+        try:
+            transcript = transcribe_audio_bytes(
+                audio_item["content"],
+                audio_item.get("filename") or "recording.webm",
+            )
+            if not transcript:
+                return json_response(
+                    self,
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    {"error": "No speech detected"},
+                )
+
+            normalized_query = normalize_arabic_text(transcript)
+            match = find_best_match(transcript)
+            return json_response(
+                self,
+                HTTPStatus.OK,
+                {
+                    "transcript": transcript,
+                    "normalized_query": normalized_query,
+                    "match": match,
+                },
+            )
+        except RuntimeError as error:
+            return json_response(
+                self,
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": str(error)},
+            )
+        except Exception as error:
+            return json_response(
+                self,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": f"Transcription failed: {error}"},
+            )
 
     def log_message(self, format, *args):
         return

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "backend": "python3 backend/server.py",
+    "backend": "LD_LIBRARY_PATH=/usr/local/lib/ollama/cuda_v12:/usr/local/lib/ollama/mlx_cuda_v13${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} WHISPER_DEVICE=cuda WHISPER_COMPUTE_TYPE=float16 .venv/bin/python backend/server.py",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

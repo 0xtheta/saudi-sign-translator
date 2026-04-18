@@ -14,6 +14,12 @@ Install frontend dependencies:
 npm install
 ```
 
+Install backend dependencies:
+
+```bash
+python3 -m pip install -r backend/requirements.txt
+```
+
 Run the backend:
 
 ```bash
@@ -37,3 +43,4 @@ Default local URLs:
 - The admin panel is intended for localhost use only.
 - Uploaded animation files must be `.glb`.
 - The backend stores records in `backend/data/` and uploaded files in `backend/uploads/`.
+- Local speech transcription uses `faster-whisper`.

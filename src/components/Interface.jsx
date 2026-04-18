@@ -1,14 +1,44 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Mic, MicOff } from 'lucide-react'
+import { Send, Mic, Radio } from 'lucide-react'
 
-export function Interface({ onSend, lookupState }) {
+const MIME_TYPE_CANDIDATES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/ogg;codecs=opus',
+]
+
+function pickRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return ''
+  }
+
+  return MIME_TYPE_CANDIDATES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? ''
+}
+
+function getRecordingFilename(mimeType) {
+  if (mimeType.includes('mp4')) {
+    return 'speech.m4a'
+  }
+
+  if (mimeType.includes('ogg')) {
+    return 'speech.ogg'
+  }
+
+  return 'speech.webm'
+}
+
+export function Interface({ onSend, onTranscribe, onSpeechError, lookupState }) {
   void motion
   const [message, setMessage] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const mediaRecorderRef = useRef(null)
+  const mediaStreamRef = useRef(null)
+  const audioChunksRef = useRef([])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -45,6 +75,15 @@ export function Interface({ onSend, lookupState }) {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    }
+  }, [])
+
   const handleSubmit = (e) => {
     e.preventDefault()
     if (message.trim()) {
@@ -53,11 +92,86 @@ export function Interface({ onSend, lookupState }) {
     }
   }
 
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+  }
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      onSpeechError?.('Microphone recording is not supported in this browser')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = pickRecordingMimeType()
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
+
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      })
+
+      recorder.addEventListener('stop', async () => {
+        const blobType = recorder.mimeType || mimeType || 'audio/webm'
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType })
+
+        audioChunksRef.current = []
+        mediaRecorderRef.current = null
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        mediaStreamRef.current = null
+        setIsListening(false)
+
+        if (audioBlob.size > 0) {
+          await onTranscribe?.(audioBlob, getRecordingFilename(blobType))
+        }
+      })
+
+      recorder.start()
+      setIsListening(true)
+    } catch (error) {
+      console.error(error)
+      onSpeechError?.('Microphone permission was denied')
+    }
+  }
+
   const toggleListening = () => {
-    setIsListening(!isListening)
+    if (isListening) {
+      stopRecording()
+      return
+    }
+
+    void startRecording()
   }
 
   const isKeyboardOpen = isMobile && keyboardHeight > 0
+  const isBusy = lookupState?.status === 'loading' || lookupState?.status === 'transcribing'
+  const statusMessage =
+    lookupState?.status === 'loading'
+      ? 'Looking for a matching sign...'
+      : lookupState?.status === 'transcribing'
+        ? 'Transcribing Arabic speech locally...'
+        : lookupState?.status === 'matched'
+          ? lookupState?.transcript
+            ? `Heard: ${lookupState.transcript}`
+            : `Matched: ${lookupState.match?.animation?.title_ar ?? 'animation'}`
+          : lookupState?.status === 'not_found'
+            ? lookupState?.transcript
+              ? `Heard: ${lookupState.transcript} • no matching sign found`
+              : 'No matching sign found in the local database'
+            : lookupState?.status === 'error'
+              ? lookupState.error || 'Something went wrong'
+              : 'Press Enter to send • Shift+Enter for new line'
 
   return (
     <div
@@ -77,7 +191,7 @@ export function Interface({ onSend, lookupState }) {
           <motion.div
             layout
             className={`
-              glass rounded-3xl p-4 sm:p-6 flex flex-col gap-4
+              glass rounded-[1.9rem] p-4 sm:p-5 flex flex-col gap-4
               transition-shadow duration-300 ease-out
               ${isFocused ? 'shadow-[0_0_50px_rgba(99,102,241,0.2)]' : ''}
             `}
@@ -103,38 +217,35 @@ export function Interface({ onSend, lookupState }) {
                   handleSubmit(e)
                 }
               }}
-              placeholder="Ask me anything..."
+              placeholder="Type an Arabic word or phrase"
               rows={isKeyboardOpen ? 2 : 4}
               className="
                 bg-transparent border-none outline-none resize-none
                 text-white placeholder-white/40
-                px-4 py-4 text-lg sm:text-xl
-                font-normal tracking-wide
+                w-full px-3 py-3 text-lg sm:text-xl
+                font-normal tracking-wide leading-8
               "
             />
 
-            <div className="flex items-center justify-between border-t border-white/10 pt-4">
-              <p className="text-white/30 text-sm tracking-wide hidden sm:block">
-                {lookupState?.status === 'loading'
-                  ? 'Looking for a matching sign...'
-                  : lookupState?.status === 'matched'
-                    ? `Matched: ${lookupState.match?.animation?.title_ar ?? 'animation'}`
-                    : lookupState?.status === 'not_found'
-                      ? 'No matching sign found in the local database'
-                      : 'Press Enter to send • Shift+Enter for new line'}
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <p className="hidden min-w-0 truncate text-sm tracking-wide text-white/38 sm:block">
+                {statusMessage}
               </p>
 
-              <div className="flex items-center gap-3 ml-auto">
+              <div className="ml-auto flex items-center gap-2 sm:gap-3">
                 <motion.button
                   type="button"
                   onClick={toggleListening}
+                  disabled={lookupState?.status === 'transcribing'}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className={`
-                    p-4 rounded-2xl transition-all duration-200
+                    inline-flex items-center justify-center p-5 rounded-[1.35rem] transition-all duration-200
                     ${isListening
-                      ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                      : 'hover:bg-white/10 text-white/60 hover:text-white/90'
+                      ? 'bg-emerald-500/18 text-emerald-300 ring-1 ring-emerald-400/25 shadow-lg shadow-emerald-500/15'
+                      : lookupState?.status === 'transcribing'
+                        ? 'bg-white/5 text-white/25 cursor-not-allowed'
+                        : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90'
                     }
                   `}
                 >
@@ -147,7 +258,7 @@ export function Interface({ onSend, lookupState }) {
                         exit={{ scale: 0, rotate: 90 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <MicOff className="w-6 h-6" />
+                        <Radio className="w-7 h-7" />
                       </motion.div>
                     ) : (
                       <motion.div
@@ -157,7 +268,7 @@ export function Interface({ onSend, lookupState }) {
                         exit={{ scale: 0, rotate: -90 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <Mic className="w-6 h-6" />
+                        <Mic className="w-7 h-7" />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -165,12 +276,12 @@ export function Interface({ onSend, lookupState }) {
 
                 <motion.button
                   type="submit"
-                  disabled={!message.trim()}
-                  whileHover={{ scale: message.trim() ? 1.05 : 1 }}
-                  whileTap={{ scale: message.trim() ? 0.95 : 1 }}
+                  disabled={!message.trim() || isBusy}
+                  whileHover={{ scale: message.trim() && !isBusy ? 1.05 : 1 }}
+                  whileTap={{ scale: message.trim() && !isBusy ? 0.95 : 1 }}
                   className={`
-                    p-4 rounded-2xl transition-all duration-200
-                    ${message.trim()
+                    inline-flex items-center justify-center rounded-[1.35rem] px-5 py-4 transition-all duration-200
+                    ${message.trim() && !isBusy
                       ? 'bg-[#6366f1] text-white hover:bg-[#5457e5] shadow-lg shadow-[#6366f1]/25'
                       : 'bg-white/5 text-white/30 cursor-not-allowed'
                     }
@@ -180,6 +291,10 @@ export function Interface({ onSend, lookupState }) {
                 </motion.button>
               </div>
             </div>
+
+            <p className="px-1 text-white/30 text-xs leading-5 sm:hidden">
+              {statusMessage}
+            </p>
           </motion.div>
         </form>
       </motion.div>
