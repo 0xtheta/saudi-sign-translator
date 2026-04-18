@@ -38,9 +38,38 @@ Default local URLs:
 - Admin: `http://localhost:5173/admin`
 - Backend: `http://127.0.0.1:8000`
 
+## Docker Deployment
+
+Start:
+
+```bash
+docker compose up -d --build
+```
+
+Update after code changes:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+By default, Docker serves the app on:
+
+- `http://<server-ip>:5173`
+
+Data persistence is handled with Docker volumes:
+
+- `sign_data` (SQLite)
+- `sign_uploads` (uploaded `.glb` files)
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for Cloudflare Access gating, env variables, and backup notes.
+
 ## Notes
 
-- The admin panel is intended for localhost use only.
+- Admin API protection is controlled by `APP_ADMIN_AUTH_MODE`:
+  - `local_only` (default)
+  - `cf_access`
+  - `open` (not recommended)
 - Uploaded animation files must be `.glb`.
 - The backend stores records in `backend/data/` and uploaded files in `backend/uploads/`.
 - Local speech transcription uses `faster-whisper`.

@@ -14,6 +14,7 @@ function createPlaybackKey() {
 function App() {
   const isAdminRoute = window.location.pathname.startsWith('/admin')
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const adminLocalOnly = String(import.meta.env.VITE_ADMIN_LOCAL_ONLY || 'false').toLowerCase() === 'true'
   const [playbackRequest, setPlaybackRequest] = useState(null)
   const [lookupState, setLookupState] = useState({
     status: 'idle',
@@ -114,7 +115,7 @@ function App() {
   }, [])
 
   if (isAdminRoute) {
-    if (!isLocalHost) {
+    if (adminLocalOnly && !isLocalHost) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-[#0a0a0b] px-6 text-white">
           <div className="max-w-md rounded-[1.75rem] border border-white/10 bg-white/5 p-8 text-center">

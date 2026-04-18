@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      APP_ADMIN_AUTH_MODE: ${APP_ADMIN_AUTH_MODE:-cf_access}
+      APP_ADMIN_ALLOWED_EMAILS: ${APP_ADMIN_ALLOWED_EMAILS:-}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    volumes:
+      - sign_data:/app/backend/data
+      - sign_uploads:/app/backend/uploads
+    expose:
+      - "8000"
+    networks:
+      - appnet
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_HTTP_PORT:-5173}:80"
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  sign_data:
+  sign_uploads:

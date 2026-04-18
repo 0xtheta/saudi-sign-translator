@@ -23,6 +23,18 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+ADMIN_AUTH_MODE = os.environ.get("APP_ADMIN_AUTH_MODE", "local_only").strip().lower()
+ADMIN_ALLOWED_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get("APP_ADMIN_ALLOWED_EMAILS", "").split(",")
+    if email.strip()
+}
+ADMIN_LOCAL_ONLY = os.environ.get("APP_ADMIN_LOCAL_ONLY", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def dict_factory(cursor, row):
@@ -258,6 +270,10 @@ def parse_multipart_request(handler):
 
 
 def is_local_admin_request(handler):
+    # Backward compatibility for older APP_ADMIN_LOCAL_ONLY deployments.
+    if ADMIN_LOCAL_ONLY:
+        return True
+
     origin = handler.headers.get("Origin") or handler.headers.get("Referer")
     if origin:
         hostname = urlparse(origin).hostname
@@ -265,6 +281,33 @@ def is_local_admin_request(handler):
 
     client_host = handler.client_address[0]
     return client_host in LOCAL_HOSTS
+
+
+def is_cloudflare_access_admin_request(handler):
+    authenticated_email = (
+        handler.headers.get("Cf-Access-Authenticated-User-Email") or ""
+    ).strip().lower()
+    if not authenticated_email:
+        return False
+
+    if not ADMIN_ALLOWED_EMAILS:
+        # Fail closed unless explicit allowlist is configured.
+        return False
+
+    if "*" in ADMIN_ALLOWED_EMAILS:
+        return True
+
+    return authenticated_email in ADMIN_ALLOWED_EMAILS
+
+
+def is_admin_request_allowed(handler):
+    if ADMIN_AUTH_MODE == "open":
+        return True
+
+    if ADMIN_AUTH_MODE == "cf_access":
+        return is_cloudflare_access_admin_request(handler)
+
+    return is_local_admin_request(handler)
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -279,9 +322,9 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/admin/state":
-            if not is_local_admin_request(self):
+            if not is_admin_request_allowed(self):
                 return json_response(
-                    self, HTTPStatus.FORBIDDEN, {"error": "Admin is local-only"}
+                    self, HTTPStatus.FORBIDDEN, {"error": "Admin access denied"}
                 )
             return json_response(
                 self,
@@ -319,16 +362,16 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/admin/animations":
-            if not is_local_admin_request(self):
+            if not is_admin_request_allowed(self):
                 return json_response(
-                    self, HTTPStatus.FORBIDDEN, {"error": "Admin is local-only"}
+                    self, HTTPStatus.FORBIDDEN, {"error": "Admin access denied"}
                 )
             return self.handle_animation_upload()
 
         if parsed.path == "/api/admin/phrases":
-            if not is_local_admin_request(self):
+            if not is_admin_request_allowed(self):
                 return json_response(
-                    self, HTTPStatus.FORBIDDEN, {"error": "Admin is local-only"}
+                    self, HTTPStatus.FORBIDDEN, {"error": "Admin access denied"}
                 )
             return self.handle_phrase_create()
 
@@ -341,18 +384,18 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path.startswith("/api/admin/animations/"):
-            if not is_local_admin_request(self):
+            if not is_admin_request_allowed(self):
                 return json_response(
-                    self, HTTPStatus.FORBIDDEN, {"error": "Admin is local-only"}
+                    self, HTTPStatus.FORBIDDEN, {"error": "Admin access denied"}
                 )
             animation_id = parsed.path.rsplit("/", 1)[-1]
             delete_animation(animation_id)
             return json_response(self, HTTPStatus.OK, {"ok": True})
 
         if parsed.path.startswith("/api/admin/phrases/"):
-            if not is_local_admin_request(self):
+            if not is_admin_request_allowed(self):
                 return json_response(
-                    self, HTTPStatus.FORBIDDEN, {"error": "Admin is local-only"}
+                    self, HTTPStatus.FORBIDDEN, {"error": "Admin access denied"}
                 )
             phrase_id = parsed.path.rsplit("/", 1)[-1]
             delete_phrase(phrase_id)
