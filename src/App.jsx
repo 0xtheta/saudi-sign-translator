@@ -16,6 +16,7 @@ function App() {
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   const adminLocalOnly = String(import.meta.env.VITE_ADMIN_LOCAL_ONLY || 'false').toLowerCase() === 'true'
   const [playbackRequest, setPlaybackRequest] = useState(null)
+  const [lastPlayableMatch, setLastPlayableMatch] = useState(null)
   const [lookupState, setLookupState] = useState({
     status: 'idle',
     match: null,
@@ -25,6 +26,7 @@ function App() {
 
   const applyLookupResult = useCallback((match, extras = {}) => {
     if (match?.animation?.file_url) {
+      setLastPlayableMatch(match)
       setPlaybackRequest({
         key: createPlaybackKey(),
         url: match.animation.file_url,
@@ -46,6 +48,18 @@ function App() {
       error: '',
     })
   }, [])
+
+  const handleReplay = useCallback(() => {
+    if (!lastPlayableMatch?.animation?.file_url) {
+      return
+    }
+
+    setPlaybackRequest({
+      key: createPlaybackKey(),
+      url: lastPlayableMatch.animation.file_url,
+      title: lastPlayableMatch.animation.title_ar,
+    })
+  }, [lastPlayableMatch])
 
   // Handle message submission
   const handleSend = useCallback(async (message) => {
@@ -138,6 +152,8 @@ function App() {
         onSend={handleSend}
         onTranscribe={handleTranscribe}
         onSpeechError={handleSpeechError}
+        onReplay={handleReplay}
+        canReplay={Boolean(lastPlayableMatch?.animation?.file_url)}
         lookupState={lookupState}
       />
     </div>

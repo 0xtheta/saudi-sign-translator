@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Mic, Radio } from 'lucide-react'
+import { Send, Mic, Radio, RotateCcw } from 'lucide-react'
 
 const MIME_TYPE_CANDIDATES = [
   'audio/webm;codecs=opus',
@@ -29,7 +29,7 @@ function getRecordingFilename(mimeType) {
   return 'speech.webm'
 }
 
-export function Interface({ onSend, onTranscribe, onSpeechError, lookupState }) {
+export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canReplay, lookupState }) {
   void motion
   const [message, setMessage] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -233,6 +233,25 @@ export function Interface({ onSend, onTranscribe, onSpeechError, lookupState }) 
               </p>
 
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                <motion.button
+                  type="button"
+                  onClick={() => onReplay?.()}
+                  disabled={!canReplay || isBusy}
+                  whileHover={{ scale: canReplay && !isBusy ? 1.05 : 1 }}
+                  whileTap={{ scale: canReplay && !isBusy ? 0.95 : 1 }}
+                  className={`
+                    inline-flex items-center justify-center p-5 rounded-[1.35rem] transition-all duration-200
+                    ${canReplay && !isBusy
+                      ? 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90'
+                      : 'bg-white/5 text-white/25 cursor-not-allowed'
+                    }
+                  `}
+                  title="Replay last sign"
+                  aria-label="Replay last sign"
+                >
+                  <RotateCcw className="w-7 h-7" />
+                </motion.button>
+
                 <motion.button
                   type="button"
                   onClick={toggleListening}

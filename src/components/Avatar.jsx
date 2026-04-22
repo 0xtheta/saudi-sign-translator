@@ -5,48 +5,8 @@ import * as THREE from 'three'
 
 const AVATAR_URL = '/avatar/avatar.glb'
 const IDLE_URL = '/animations/M_Standing_Idle_001.glb'
-const TRANSITION_DURATION = 0.2
-
-function captureRestState(root) {
-  const nodeStates = new Map()
-  const morphStates = new Map()
-
-  root.traverse((child) => {
-    nodeStates.set(child.uuid, {
-      position: child.position.clone(),
-      quaternion: child.quaternion.clone(),
-      scale: child.scale.clone(),
-    })
-
-    if (child.morphTargetInfluences) {
-      morphStates.set(child.uuid, [...child.morphTargetInfluences])
-    }
-  })
-
-  return { nodeStates, morphStates }
-}
-
-function restoreRestState(root, restState) {
-  if (!root || !restState) {
-    return
-  }
-
-  root.traverse((child) => {
-    const nodeState = restState.nodeStates.get(child.uuid)
-    if (nodeState) {
-      child.position.copy(nodeState.position)
-      child.quaternion.copy(nodeState.quaternion)
-      child.scale.copy(nodeState.scale)
-    }
-
-    if (child.morphTargetInfluences) {
-      const morphState = restState.morphStates.get(child.uuid)
-      if (morphState) {
-        child.morphTargetInfluences.splice(0, child.morphTargetInfluences.length, ...morphState)
-      }
-    }
-  })
-}
+const ENTER_TRANSITION_DURATION = 0.2
+const RETURN_TRANSITION_DURATION = 0.45
 
 function buildIdleClip(clip) {
   if (!clip) {
@@ -69,7 +29,6 @@ export function Avatar({ playbackRequest }) {
   const idleActionRef = useRef(null)
   const activeActionRef = useRef(null)
   const endingBlendStartedRef = useRef(false)
-  const restStateRef = useRef(null)
   const isMobile = size.width < 640
   const avatarScale = isMobile ? 1.22 : 1.5
   const avatarPositionY = isMobile ? -1.6 : -1.72
@@ -96,8 +55,6 @@ export function Avatar({ playbackRequest }) {
             }
           }
         })
-
-        restStateRef.current = captureRestState(loadedScene)
         setAvatarScene(loadedScene)
       },
       undefined,
@@ -143,15 +100,15 @@ export function Avatar({ playbackRequest }) {
 
       if (idleActionRef.current) {
         idleActionRef.current.enabled = true
+        idleActionRef.current.play()
         idleActionRef.current.setEffectiveTimeScale(1)
         idleActionRef.current.setEffectiveWeight(1)
-        idleActionRef.current.fadeIn(TRANSITION_DURATION)
       }
 
       if (finishedAction) {
         window.setTimeout(() => {
           finishedAction.stop()
-        }, TRANSITION_DURATION * 1000 + 20)
+        }, RETURN_TRANSITION_DURATION * 1000 + 20)
       }
     }
 
@@ -200,9 +157,6 @@ export function Avatar({ playbackRequest }) {
       return undefined
     }
 
-    activeActionRef.current?.stop()
-    restoreRestState(avatarScene, restStateRef.current)
-
     if (!playbackRequest?.url) {
       return undefined
     }
@@ -219,16 +173,24 @@ export function Avatar({ playbackRequest }) {
         }
 
         const clip = gltf.animations[0]
-        if (idleActionRef.current) {
-          idleActionRef.current.enabled = true
-          idleActionRef.current.fadeOut(TRANSITION_DURATION)
-        }
+        const idleAction = idleActionRef.current
         const action = mixerRef.current.clipAction(clip)
         action.reset()
         action.setLoop(THREE.LoopOnce, 1)
-        action.clampWhenFinished = false
-        action.fadeIn(0.1)
+        action.clampWhenFinished = true
+        action.enabled = true
+        action.setEffectiveTimeScale(1)
+        action.setEffectiveWeight(1)
         action.play()
+
+        if (idleAction) {
+          idleAction.enabled = true
+          idleAction.play()
+          idleAction.crossFadeTo(action, ENTER_TRANSITION_DURATION, false)
+        } else {
+          action.fadeIn(ENTER_TRANSITION_DURATION)
+        }
+
         activeActionRef.current = action
       },
       undefined,
@@ -240,7 +202,7 @@ export function Avatar({ playbackRequest }) {
     return () => {
       isMounted = false
       if (activeActionRef.current) {
-        activeActionRef.current.stop()
+        activeActionRef.current.fadeOut(0.1)
         activeActionRef.current = null
         endingBlendStartedRef.current = false
         idleActionRef.current?.setEffectiveWeight(1)
@@ -260,13 +222,13 @@ export function Avatar({ playbackRequest }) {
     }
 
     const remaining = activeAction.getClip().duration - activeAction.time
-    if (remaining <= TRANSITION_DURATION) {
+    if (remaining <= RETURN_TRANSITION_DURATION) {
       endingBlendStartedRef.current = true
       idleAction.enabled = true
+      idleAction.play()
       idleAction.setEffectiveTimeScale(1)
       idleAction.setEffectiveWeight(1)
-      idleAction.fadeIn(TRANSITION_DURATION)
-      activeAction.fadeOut(TRANSITION_DURATION)
+      activeAction.crossFadeTo(idleAction, RETURN_TRANSITION_DURATION, false)
     }
   })
 
