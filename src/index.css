@@ -32,7 +32,7 @@
 }
 
 html {
-  background: #0a0a0b;
+  background: linear-gradient(180deg, #6f737a 0%, #4f5359 45%, #363a40 100%);
   height: 100%;
   overflow: hidden;
   position: fixed;
@@ -40,7 +40,7 @@ html {
 }
 
 body {
-  background: #0a0a0b;
+  background: linear-gradient(180deg, #6f737a 0%, #4f5359 45%, #363a40 100%);
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -58,7 +58,9 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: var(--font-sans);
-  background: linear-gradient(180deg, var(--color-charcoal-950) 0%, var(--color-charcoal-900) 50%, var(--color-charcoal-800) 100%);
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.16) 0%, transparent 30%),
+    linear-gradient(180deg, #7b8088 0%, #595e66 42%, #3c4047 100%);
 }
 
 html.admin-mode {
@@ -505,10 +507,13 @@ textarea {
 
 /* Glassmorphism utilities */
 .glass {
-  background: var(--color-frost-100);
+  background: linear-gradient(180deg, rgba(34, 37, 42, 0.82) 0%, rgba(24, 27, 31, 0.9) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--color-frost-200);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 40px rgba(0, 0, 0, 0.18);
 }
 
 .glass-hover:hover {

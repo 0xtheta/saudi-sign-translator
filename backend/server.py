@@ -8,7 +8,7 @@ from email.policy import default
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import parse_qs, urlparse, unquote
 
 from arabic import normalize_arabic_text, slugify_label
 from whisper_service import transcribe_audio_bytes
@@ -204,6 +204,34 @@ def find_best_match(query: str):
     }
 
 
+def list_public_phrases(limit: int = 48):
+    connection = get_connection()
+    rows = connection.execute(
+        """
+        SELECT
+          latest_phrase.id,
+          latest_phrase.animation_id,
+          latest_phrase.text_original,
+          latest_phrase.text_normalized,
+          animations.title_ar AS animation_title_ar
+        FROM phrases AS latest_phrase
+        JOIN (
+          SELECT animation_id, MAX(created_at) AS latest_created_at
+          FROM phrases
+          GROUP BY animation_id
+        ) AS grouped_phrases
+          ON grouped_phrases.animation_id = latest_phrase.animation_id
+         AND grouped_phrases.latest_created_at = latest_phrase.created_at
+        JOIN animations ON animations.id = latest_phrase.animation_id
+        ORDER BY latest_phrase.created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    connection.close()
+    return rows
+
+
 def serialize_animation(animation):
     file_name = Path(animation["file_path"]).name
     return {
@@ -320,6 +348,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        query_params = parse_qs(parsed.query)
 
         if parsed.path == "/api/admin/state":
             if not is_admin_request_allowed(self):
@@ -336,18 +365,23 @@ class AppHandler(BaseHTTPRequestHandler):
             )
 
         if parsed.path.startswith("/api/lookup"):
-            query = ""
-            if "?" in self.path:
-                query_string = self.path.split("?", 1)[1]
-                for pair in query_string.split("&"):
-                    if pair.startswith("query="):
-                        query = pair.split("=", 1)[1]
-                        query = query.replace("+", " ")
-                        query = unquote(query)
-                        break
+            query = query_params.get("query", [""])[0]
+            query = unquote(query.replace("+", " "))
 
             match = find_best_match(query)
             return json_response(self, HTTPStatus.OK, {"match": match})
+
+        if parsed.path == "/api/phrases":
+            limit = query_params.get("limit", ["48"])[0]
+            try:
+                limit = max(1, min(int(limit), 200))
+            except ValueError:
+                limit = 48
+            return json_response(
+                self,
+                HTTPStatus.OK,
+                {"phrases": list_public_phrases(limit)},
+            )
 
         if parsed.path.startswith("/media/"):
             file_name = Path(unquote(parsed.path.rsplit("/", 1)[-1])).name

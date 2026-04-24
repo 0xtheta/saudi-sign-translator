@@ -1,4 +1,5 @@
 import os
+import platform
 import tempfile
 from pathlib import Path
 
@@ -7,26 +8,69 @@ try:
 except ImportError:
     WhisperModel = None
 
+try:
+    import mlx_whisper
+except ImportError:
+    mlx_whisper = None
+
 
 WHISPER_MODEL = None
 ALLOWED_AUDIO_SUFFIXES = {".webm", ".wav", ".mp3", ".m4a", ".ogg"}
 
 
+def is_apple_silicon() -> bool:
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def resolve_whisper_backend() -> str:
+    backend = os.environ.get("WHISPER_BACKEND", "").strip().lower()
+    if backend:
+        return backend
+
+    device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
+    if device == "mlx":
+        return "mlx"
+
+    if is_apple_silicon():
+        return "mlx"
+
+    return "faster-whisper"
+
+
+def get_mlx_model_name(model_size: str) -> str:
+    return os.environ.get("WHISPER_MODEL_REPO", f"mlx-community/whisper-{model_size}-mlx")
+
+
 def get_whisper_model():
     global WHISPER_MODEL
 
-    if WhisperModel is None:
-        raise RuntimeError("faster-whisper is not installed")
-
     if WHISPER_MODEL is None:
+        backend = resolve_whisper_backend()
         model_size = os.environ.get("WHISPER_MODEL_SIZE", "small")
-        device = os.environ.get("WHISPER_DEVICE", "cpu")
-        compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
-        WHISPER_MODEL = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-        )
+        if backend == "mlx":
+            if mlx_whisper is None:
+                raise RuntimeError(
+                    "mlx-whisper is not installed. Install backend requirements on Apple Silicon "
+                    "or set WHISPER_BACKEND=faster-whisper to force the CPU/CUDA path."
+                )
+            WHISPER_MODEL = {
+                "backend": "mlx",
+                "model": get_mlx_model_name(model_size),
+            }
+        else:
+            if WhisperModel is None:
+                raise RuntimeError("faster-whisper is not installed")
+
+            device = os.environ.get("WHISPER_DEVICE", "cpu")
+            compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
+            WHISPER_MODEL = {
+                "backend": "faster-whisper",
+                "model": WhisperModel(
+                    model_size,
+                    device=device,
+                    compute_type=compute_type,
+                ),
+            }
 
     return WHISPER_MODEL
 
@@ -39,8 +83,17 @@ def normalize_audio_suffix(filename: str) -> str:
 
 
 def transcribe_audio_file(file_path: Path) -> str:
-    model = get_whisper_model()
-    segments, _info = model.transcribe(
+    whisper_model = get_whisper_model()
+
+    if whisper_model["backend"] == "mlx":
+        result = mlx_whisper.transcribe(
+            str(file_path),
+            path_or_hf_repo=whisper_model["model"],
+            language="ar",
+        )
+        return result.get("text", "").strip()
+
+    segments, _info = whisper_model["model"].transcribe(
         str(file_path),
         language="ar",
         task="transcribe",

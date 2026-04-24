@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Scene } from './components/Scene'
 import { Interface } from './components/Interface'
 import { AdminApp } from './components/admin/AdminApp'
@@ -22,6 +22,10 @@ function App() {
     match: null,
     transcript: '',
     error: '',
+  })
+  const [phrasesState, setPhrasesState] = useState({
+    status: 'loading',
+    items: [],
   })
 
   const applyLookupResult = useCallback((match, extras = {}) => {
@@ -128,14 +132,45 @@ function App() {
     })
   }, [])
 
+  useEffect(() => {
+    const abortController = new AbortController()
+
+    const loadPhrases = async () => {
+      try {
+        const response = await fetch('/api/phrases?limit=60', { signal: abortController.signal })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to load phrases')
+        }
+
+        setPhrasesState({
+          status: 'ready',
+          items: payload.phrases ?? [],
+        })
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return
+        }
+
+        console.error(error)
+        setPhrasesState({ status: 'error', items: [] })
+      }
+    }
+
+    void loadPhrases()
+
+    return () => abortController.abort()
+  }, [])
+
   if (isAdminRoute) {
     if (adminLocalOnly && !isLocalHost) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-[#0a0a0b] px-6 text-white">
           <div className="max-w-md rounded-[1.75rem] border border-white/10 bg-white/5 p-8 text-center">
-            <h1 className="text-2xl font-semibold">Admin unavailable</h1>
+            <h1 className="text-2xl font-semibold">لوحة الإدارة غير متاحة</h1>
             <p className="mt-3 text-sm leading-6 text-white/55">
-              The admin panel is restricted to localhost.
+              لوحة الإدارة متاحة فقط على الجهاز المحلي.
             </p>
           </div>
         </div>
@@ -155,6 +190,8 @@ function App() {
         onReplay={handleReplay}
         canReplay={Boolean(lastPlayableMatch?.animation?.file_url)}
         lookupState={lookupState}
+        phrasesState={phrasesState}
+        onSelectPhrase={handleSend}
       />
     </div>
   )

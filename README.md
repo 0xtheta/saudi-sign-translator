@@ -26,6 +26,13 @@ Run the backend:
 npm run backend
 ```
 
+Backend transcription runtime selection:
+
+- Apple Silicon macOS defaults to `mlx-whisper`.
+- Other platforms default to `faster-whisper` with `WHISPER_DEVICE=cuda`.
+- Override with `WHISPER_BACKEND=mlx` or `WHISPER_BACKEND=faster-whisper`.
+- For the `faster-whisper` path, use `WHISPER_DEVICE=cuda` on your Linux RTX box.
+
 Run the frontend in a second terminal:
 
 ```bash

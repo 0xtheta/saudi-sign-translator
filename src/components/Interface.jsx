@@ -29,7 +29,16 @@ function getRecordingFilename(mimeType) {
   return 'speech.webm'
 }
 
-export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canReplay, lookupState }) {
+export function Interface({
+  onSend,
+  onTranscribe,
+  onSpeechError,
+  onReplay,
+  canReplay,
+  lookupState,
+  phrasesState,
+  onSelectPhrase,
+}) {
   void motion
   const [message, setMessage] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -101,7 +110,7 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      onSpeechError?.('Microphone recording is not supported in this browser')
+      onSpeechError?.('تسجيل الصوت غير مدعوم في هذا المتصفح')
       return
     }
 
@@ -141,7 +150,7 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
       setIsListening(true)
     } catch (error) {
       console.error(error)
-      onSpeechError?.('Microphone permission was denied')
+      onSpeechError?.('تم رفض إذن استخدام الميكروفون')
     }
   }
 
@@ -156,26 +165,27 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
 
   const isKeyboardOpen = isMobile && keyboardHeight > 0
   const isBusy = lookupState?.status === 'loading' || lookupState?.status === 'transcribing'
+  const phrases = phrasesState?.items ?? []
   const statusMessage =
     lookupState?.status === 'loading'
-      ? 'Looking for a matching sign...'
+      ? 'جارٍ البحث عن الإشارة المناسبة...'
       : lookupState?.status === 'transcribing'
-        ? 'Transcribing Arabic speech locally...'
+        ? 'جارٍ تحويل الكلام إلى نص محلياً...'
         : lookupState?.status === 'matched'
           ? lookupState?.transcript
-            ? `Heard: ${lookupState.transcript}`
-            : `Matched: ${lookupState.match?.animation?.title_ar ?? 'animation'}`
+            ? `تم التقاط: ${lookupState.transcript}`
+            : `تمت مطابقة: ${lookupState.match?.animation?.title_ar ?? 'الإشارة'}`
           : lookupState?.status === 'not_found'
             ? lookupState?.transcript
-              ? `Heard: ${lookupState.transcript} • no matching sign found`
-              : 'No matching sign found in the local database'
+              ? `تم التقاط: ${lookupState.transcript} • لم يتم العثور على إشارة مطابقة`
+              : 'لم يتم العثور على إشارة مطابقة في قاعدة البيانات'
             : lookupState?.status === 'error'
-              ? lookupState.error || 'Something went wrong'
-              : 'Press Enter to send • Shift+Enter for new line'
+              ? lookupState.error || 'حدث خطأ ما'
+              : ''
 
   return (
     <div
-      className="fixed z-10 pointer-events-none inset-x-0 p-4 sm:p-6 md:p-8 flex justify-center"
+      className="fixed z-10 pointer-events-none inset-x-0 px-3 pb-3 pt-4 sm:p-6 md:p-8 flex justify-center"
       style={{
         bottom: isKeyboardOpen ? `${keyboardHeight + 10}px` : 0,
         transition: 'bottom 0.15s ease-out',
@@ -185,7 +195,7 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="w-full max-w-4xl relative z-10"
+        className="relative z-10 w-full max-w-4xl"
       >
         <form onSubmit={handleSubmit} className="pointer-events-auto w-full">
           <motion.div
@@ -200,6 +210,7 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
             }}
           >
             <textarea
+              dir="rtl"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onFocus={() => {
@@ -217,22 +228,51 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
                   handleSubmit(e)
                 }
               }}
-              placeholder="Type an Arabic word or phrase"
+              placeholder="اكتب كلمة أو عبارة"
               rows={isKeyboardOpen ? 2 : 4}
               className="
                 bg-transparent border-none outline-none resize-none
                 text-white placeholder-white/40
-                w-full px-3 py-3 text-lg sm:text-xl
-                font-normal tracking-wide leading-8
+                w-full px-2 pt-4 pb-2 text-lg sm:px-3 sm:pt-5 sm:pb-3 sm:text-xl
+                text-right font-normal leading-8
               "
             />
 
-            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <p className="hidden min-w-0 truncate text-sm tracking-wide text-white/38 sm:block">
-                {statusMessage}
-              </p>
+            <div
+              dir="rtl"
+              className="mx-1 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+            >
+              <div className="flex items-stretch gap-3 overflow-x-auto px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {phrasesState?.status === 'loading' ? (
+                  <span className="px-3 text-sm text-white/35">جارٍ تحميل الكلمات...</span>
+                ) : null}
 
-              <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                {phrasesState?.status === 'error' ? (
+                  <span className="px-3 text-sm text-white/35">تعذر تحميل الكلمات المتاحة</span>
+                ) : null}
+
+                {phrases.map((phrase) => (
+                  <button
+                    key={phrase.id}
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => onSelectPhrase?.(phrase.text_original)}
+                    className={`
+                      shrink-0 rounded-[1.15rem] border px-4 py-3 text-right transition-all duration-200
+                      ${isBusy
+                        ? 'border-white/10 bg-white/5 text-white/25'
+                        : 'border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:border-white/20 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] hover:text-white'
+                      }
+                    `}
+                  >
+                    <span className="block text-base font-medium leading-6">{phrase.text_original}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <motion.button
                   type="button"
                   onClick={() => onReplay?.()}
@@ -246,8 +286,8 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
                       : 'bg-white/5 text-white/25 cursor-not-allowed'
                     }
                   `}
-                  title="Replay last sign"
-                  aria-label="Replay last sign"
+                  title="إعادة تشغيل آخر إشارة"
+                  aria-label="إعادة تشغيل آخر إشارة"
                 >
                   <RotateCcw className="w-7 h-7" />
                 </motion.button>
@@ -309,11 +349,19 @@ export function Interface({ onSend, onTranscribe, onSpeechError, onReplay, canRe
                   <Send className="w-6 h-6" />
                 </motion.button>
               </div>
+
+              {statusMessage ? (
+                <p className="hidden min-w-0 truncate text-sm tracking-wide text-white/38 sm:block">
+                  {statusMessage}
+                </p>
+              ) : <span className="hidden sm:block" />}
             </div>
 
-            <p className="px-1 text-white/30 text-xs leading-5 sm:hidden">
-              {statusMessage}
-            </p>
+            {statusMessage ? (
+              <p className="px-1 text-white/30 text-xs leading-5 sm:hidden">
+                {statusMessage}
+              </p>
+            ) : null}
           </motion.div>
         </form>
       </motion.div>
