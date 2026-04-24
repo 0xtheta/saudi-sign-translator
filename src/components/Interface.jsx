@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Mic, Radio, RotateCcw } from 'lucide-react'
 
+const MotionDiv = motion.div
+const MotionButton = motion.button
+
 const MIME_TYPE_CANDIDATES = [
   'audio/webm;codecs=opus',
   'audio/webm',
@@ -38,8 +41,9 @@ export function Interface({
   lookupState,
   phrasesState,
   onSelectPhrase,
+  playbackSpeed,
+  onPlaybackSpeedChange,
 }) {
-  void motion
   const [message, setMessage] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
@@ -166,22 +170,14 @@ export function Interface({
   const isKeyboardOpen = isMobile && keyboardHeight > 0
   const isBusy = lookupState?.status === 'loading' || lookupState?.status === 'transcribing'
   const phrases = phrasesState?.items ?? []
-  const statusMessage =
-    lookupState?.status === 'loading'
-      ? 'جارٍ البحث عن الإشارة المناسبة...'
-      : lookupState?.status === 'transcribing'
-        ? 'جارٍ تحويل الكلام إلى نص محلياً...'
-        : lookupState?.status === 'matched'
-          ? lookupState?.transcript
-            ? `تم التقاط: ${lookupState.transcript}`
-            : `تمت مطابقة: ${lookupState.match?.animation?.title_ar ?? 'الإشارة'}`
-          : lookupState?.status === 'not_found'
-            ? lookupState?.transcript
-              ? `تم التقاط: ${lookupState.transcript} • لم يتم العثور على إشارة مطابقة`
-              : 'لم يتم العثور على إشارة مطابقة في قاعدة البيانات'
-            : lookupState?.status === 'error'
-              ? lookupState.error || 'حدث خطأ ما'
-              : ''
+  const textareaPlaceholder =
+    lookupState?.status === 'matched' && lookupState?.transcript
+      ? `تم التقاط: ${lookupState.transcript}`
+      : lookupState?.status === 'not_found' && lookupState?.transcript
+        ? `تم التقاط: ${lookupState.transcript} • لم يتم العثور على تطابق`
+        : lookupState?.status === 'not_found'
+          ? 'لم يتم العثور على تطابق'
+          : 'اكتب كلمة أو عبارة'
 
   return (
     <div
@@ -191,14 +187,14 @@ export function Interface({
         transition: 'bottom 0.15s ease-out',
       }}
     >
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className="relative z-10 w-full max-w-4xl"
       >
         <form onSubmit={handleSubmit} className="pointer-events-auto w-full">
-          <motion.div
+          <MotionDiv
             layout
             className={`
               glass rounded-[1.9rem] p-4 sm:p-5 flex flex-col gap-4
@@ -228,7 +224,7 @@ export function Interface({
                   handleSubmit(e)
                 }
               }}
-              placeholder="اكتب كلمة أو عبارة"
+              placeholder={textareaPlaceholder}
               rows={isKeyboardOpen ? 2 : 4}
               className="
                 bg-transparent border-none outline-none resize-none
@@ -273,7 +269,7 @@ export function Interface({
 
             <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
               <div className="flex items-center gap-2 sm:gap-3">
-                <motion.button
+                <MotionButton
                   type="button"
                   onClick={() => onReplay?.()}
                   disabled={!canReplay || isBusy}
@@ -290,9 +286,9 @@ export function Interface({
                   aria-label="إعادة تشغيل آخر إشارة"
                 >
                   <RotateCcw className="w-7 h-7" />
-                </motion.button>
+                </MotionButton>
 
-                <motion.button
+                <MotionButton
                   type="button"
                   onClick={toggleListening}
                   disabled={lookupState?.status === 'transcribing'}
@@ -310,7 +306,7 @@ export function Interface({
                 >
                   <AnimatePresence mode="wait">
                     {isListening ? (
-                      <motion.div
+                      <MotionDiv
                         key="listening"
                         initial={{ scale: 0, rotate: -90 }}
                         animate={{ scale: 1, rotate: 0 }}
@@ -318,9 +314,9 @@ export function Interface({
                         transition={{ duration: 0.2 }}
                       >
                         <Radio className="w-7 h-7" />
-                      </motion.div>
+                      </MotionDiv>
                     ) : (
-                      <motion.div
+                      <MotionDiv
                         key="idle"
                         initial={{ scale: 0, rotate: 90 }}
                         animate={{ scale: 1, rotate: 0 }}
@@ -328,12 +324,12 @@ export function Interface({
                         transition={{ duration: 0.2 }}
                       >
                         <Mic className="w-7 h-7" />
-                      </motion.div>
+                      </MotionDiv>
                     )}
                   </AnimatePresence>
-                </motion.button>
+                </MotionButton>
 
-                <motion.button
+                <MotionButton
                   type="submit"
                   disabled={!message.trim() || isBusy}
                   whileHover={{ scale: message.trim() && !isBusy ? 1.05 : 1 }}
@@ -347,28 +343,35 @@ export function Interface({
                   `}
                 >
                   <Send className="w-6 h-6" />
-                </motion.button>
+                </MotionButton>
               </div>
 
-              {statusMessage ? (
-                <p className="hidden min-w-0 truncate text-sm tracking-wide text-white/38 sm:block">
-                  {statusMessage}
-                </p>
-              ) : <span className="hidden sm:block" />}
+              <div className="flex flex-1 justify-center">
+                <div className="flex w-[8.25rem] items-center gap-2 sm:w-[9rem]">
+                  <span className="shrink-0 text-[0.7rem] text-white/45">السرعة</span>
+                  <input
+                    type="range"
+                    min="0.25"
+                    max="1"
+                    step="0.05"
+                    value={playbackSpeed}
+                    onChange={(e) => onPlaybackSpeedChange?.(Number(e.target.value))}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-white"
+                  />
+                  <span className="w-7 shrink-0 text-right text-[0.68rem] tabular-nums text-white/55">
+                    {playbackSpeed.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}
+                  </span>
+                </div>
+              </div>
+              <span className="hidden sm:block" />
             </div>
-
-            {statusMessage ? (
-              <p className="px-1 text-white/30 text-xs leading-5 sm:hidden">
-                {statusMessage}
-              </p>
-            ) : null}
-          </motion.div>
+          </MotionDiv>
         </form>
-      </motion.div>
+      </MotionDiv>
 
       <AnimatePresence>
         {isListening && (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
@@ -377,7 +380,7 @@ export function Interface({
             <div className="flex items-center gap-3 glass rounded-full px-6 py-3">
               <div className="flex gap-1">
                 {[0, 1, 2].map((i) => (
-                  <motion.div
+                  <MotionDiv
                     key={i}
                     className="w-2 h-2 bg-red-400 rounded-full"
                     animate={{
@@ -394,7 +397,7 @@ export function Interface({
               </div>
               <span className="text-white/70 text-sm">Listening...</span>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </AnimatePresence>
     </div>

@@ -3,6 +3,8 @@ import { Scene } from './components/Scene'
 import { Interface } from './components/Interface'
 import { AdminApp } from './components/admin/AdminApp'
 
+const NO_MATCH_ANIMATION_URL = '/animations/M_Standing_Idle_001_HeadShake.glb'
+
 function createPlaybackKey() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID()
@@ -16,6 +18,7 @@ function App() {
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   const adminLocalOnly = String(import.meta.env.VITE_ADMIN_LOCAL_ONLY || 'false').toLowerCase() === 'true'
   const [playbackRequest, setPlaybackRequest] = useState(null)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [lastPlayableMatch, setLastPlayableMatch] = useState(null)
   const [lookupState, setLookupState] = useState({
     status: 'idle',
@@ -34,7 +37,6 @@ function App() {
       setPlaybackRequest({
         key: createPlaybackKey(),
         url: match.animation.file_url,
-        title: match.animation.title_ar,
       })
       setLookupState({
         status: 'matched',
@@ -51,6 +53,10 @@ function App() {
       transcript: extras.transcript ?? '',
       error: '',
     })
+    setPlaybackRequest({
+      key: createPlaybackKey(),
+      url: NO_MATCH_ANIMATION_URL,
+    })
   }, [])
 
   const handleReplay = useCallback(() => {
@@ -61,7 +67,6 @@ function App() {
     setPlaybackRequest({
       key: createPlaybackKey(),
       url: lastPlayableMatch.animation.file_url,
-      title: lastPlayableMatch.animation.title_ar,
     })
   }, [lastPlayableMatch])
 
@@ -182,7 +187,7 @@ function App() {
 
   return (
     <div className="relative w-full h-full overflow-hidden">
-      <Scene playbackRequest={playbackRequest} />
+      <Scene playbackRequest={playbackRequest} playbackSpeed={playbackSpeed} />
       <Interface
         onSend={handleSend}
         onTranscribe={handleTranscribe}
@@ -192,6 +197,8 @@ function App() {
         lookupState={lookupState}
         phrasesState={phrasesState}
         onSelectPhrase={handleSend}
+        playbackSpeed={playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
       />
     </div>
   )

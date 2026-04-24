@@ -56,7 +56,7 @@ function LoadingFallback() {
   )
 }
 
-export function Scene({ playbackRequest }) {
+export function Scene({ playbackRequest, playbackSpeed }) {
   return (
     <Canvas
       shadows
@@ -87,7 +87,10 @@ export function Scene({ playbackRequest }) {
           floatIntensity={0.3}
           floatingRange={[-0.05, 0.05]}
         >
-          <Avatar playbackRequest={playbackRequest} />
+          <Avatar
+            playbackRequest={playbackRequest}
+            playbackSpeed={playbackSpeed}
+          />
         </Float>
       </Suspense>
       

@@ -9,12 +9,12 @@ import {
 } from '../../lib/adminApi'
 import { normalizeArabicText, slugifyLabel } from '../../lib/arabic'
 
-function StatCard({ icon: Icon, label, value }) {
-  void Icon
+function StatCard({ icon, label, value }) {
+  const IconComponent = icon
   return (
     <div className="admin-stat-card">
       <div className="admin-stat-icon">
-        <Icon className="h-4 w-4" />
+        <IconComponent className="h-4 w-4" />
       </div>
       <div>
         <p className="admin-stat-label">{label}</p>

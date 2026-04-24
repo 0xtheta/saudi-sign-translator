@@ -199,8 +199,6 @@ def find_best_match(query: str):
     return {
         "animation": serialize_animation(animation),
         "phrase": phrase,
-        "normalized_query": normalized_query,
-        "match_type": "exact_alias",
     }
 
 
@@ -211,9 +209,7 @@ def list_public_phrases(limit: int = 48):
         SELECT
           latest_phrase.id,
           latest_phrase.animation_id,
-          latest_phrase.text_original,
-          latest_phrase.text_normalized,
-          animations.title_ar AS animation_title_ar
+          latest_phrase.text_original
         FROM phrases AS latest_phrase
         JOIN (
           SELECT animation_id, MAX(created_at) AS latest_created_at
@@ -573,7 +569,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {
                     "transcript": transcript,
-                    "normalized_query": normalized_query,
                     "match": match,
                 },
             )

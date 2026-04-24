@@ -21,7 +21,7 @@ function buildIdleClip(clip) {
   return new THREE.AnimationClip('idle', clip.duration, filteredTracks.map((track) => track.clone()))
 }
 
-export function Avatar({ playbackRequest }) {
+export function Avatar({ playbackRequest, playbackSpeed = 1 }) {
   const { size } = useThree()
   const group = useRef()
   const [avatarScene, setAvatarScene] = useState(null)
@@ -29,6 +29,7 @@ export function Avatar({ playbackRequest }) {
   const idleActionRef = useRef(null)
   const activeActionRef = useRef(null)
   const endingBlendStartedRef = useRef(false)
+  const playbackSpeedRef = useRef(playbackSpeed)
   const isMobile = size.width < 640
   const avatarScale = isMobile ? 1.22 : 1.5
   const avatarPositionY = isMobile ? -1.6 : -1.72
@@ -93,8 +94,14 @@ export function Avatar({ playbackRequest }) {
     const loader = new GLTFLoader()
     let isMounted = true
 
-    const handleFinished = () => {
-      const finishedAction = activeActionRef.current
+    const handleFinished = (event) => {
+      const finishedAction = event.action
+
+      if (finishedAction !== activeActionRef.current) {
+        finishedAction?.stop()
+        return
+      }
+
       activeActionRef.current = null
       endingBlendStartedRef.current = false
 
@@ -153,6 +160,16 @@ export function Avatar({ playbackRequest }) {
   }, [avatarScene])
 
   useEffect(() => {
+    playbackSpeedRef.current = playbackSpeed
+
+    if (!activeActionRef.current) {
+      return
+    }
+
+    activeActionRef.current.setEffectiveTimeScale(playbackSpeed)
+  }, [playbackSpeed])
+
+  useEffect(() => {
     if (!avatarScene || !mixerRef.current) {
       return undefined
     }
@@ -179,7 +196,7 @@ export function Avatar({ playbackRequest }) {
         action.setLoop(THREE.LoopOnce, 1)
         action.clampWhenFinished = true
         action.enabled = true
-        action.setEffectiveTimeScale(1)
+        action.setEffectiveTimeScale(playbackSpeedRef.current)
         action.setEffectiveWeight(1)
         action.play()
 
@@ -222,7 +239,7 @@ export function Avatar({ playbackRequest }) {
     }
 
     const remaining = activeAction.getClip().duration - activeAction.time
-    if (remaining <= RETURN_TRANSITION_DURATION) {
+    if (remaining <= RETURN_TRANSITION_DURATION * playbackSpeed) {
       endingBlendStartedRef.current = true
       idleAction.enabled = true
       idleAction.play()

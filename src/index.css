@@ -64,16 +64,25 @@ body {
 }
 
 html.admin-mode {
-  position: static;
-  overflow-y: auto;
+  position: static !important;
+  width: auto;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto !important;
 }
 
 body.admin-mode {
-  position: static;
+  position: static !important;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
   width: auto;
   height: auto;
   min-height: 100%;
-  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-y: auto !important;
+  overscroll-behavior: auto;
 }
 
 #root.admin-mode {
@@ -99,7 +108,7 @@ textarea {
 
 .admin-shell {
   min-height: 100vh;
-  overflow-y: auto;
+  overflow: visible;
   position: relative;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.04) 0%, transparent 28%),
