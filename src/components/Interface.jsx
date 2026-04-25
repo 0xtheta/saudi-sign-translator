@@ -39,8 +39,6 @@ export function Interface({
   onReplay,
   canReplay,
   lookupState,
-  phrasesState,
-  onSelectPhrase,
   playbackSpeed,
   onPlaybackSpeedChange,
 }) {
@@ -169,7 +167,6 @@ export function Interface({
 
   const isKeyboardOpen = isMobile && keyboardHeight > 0
   const isBusy = lookupState?.status === 'loading' || lookupState?.status === 'transcribing'
-  const phrases = phrasesState?.items ?? []
   const textareaPlaceholder =
     lookupState?.status === 'matched' && lookupState?.transcript
       ? `تم التقاط: ${lookupState.transcript}`
@@ -191,13 +188,13 @@ export function Interface({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative z-10 w-full max-w-4xl"
+        className="relative z-10 w-full max-w-3xl"
       >
         <form onSubmit={handleSubmit} className="pointer-events-auto w-full">
           <MotionDiv
             layout
             className={`
-              glass rounded-[1.9rem] p-4 sm:p-5 flex flex-col gap-4
+              glass rounded-[1.7rem] p-3.5 sm:p-4.5 flex flex-col gap-3
               transition-shadow duration-300 ease-out
               ${isFocused ? 'shadow-[0_0_50px_rgba(99,102,241,0.2)]' : ''}
             `}
@@ -219,56 +216,33 @@ export function Interface({
               }}
               onBlur={() => setIsFocused(false)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (isMobile && e.key === 'Enter') {
+                  e.preventDefault()
+                  return
+                }
+
+                if (!isMobile && e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   handleSubmit(e)
                 }
               }}
               placeholder={textareaPlaceholder}
-              rows={isKeyboardOpen ? 2 : 4}
+              rows={2}
+              style={{
+                paddingInlineStart: '0.75rem',
+                paddingInlineEnd: '2rem',
+                marginRight: '0.25rem',
+              }}
               className="
                 bg-transparent border-none outline-none resize-none
                 text-white placeholder-white/40
-                w-full px-2 pt-4 pb-2 text-lg sm:px-3 sm:pt-5 sm:pb-3 sm:text-xl
-                text-right font-normal leading-8
+                w-full overflow-hidden py-1 text-sm sm:py-1.5 sm:text-base
+                text-right font-normal leading-[1.375rem] sm:leading-6
               "
             />
 
-            <div
-              dir="rtl"
-              className="mx-1 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-            >
-              <div className="flex items-stretch gap-3 overflow-x-auto px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {phrasesState?.status === 'loading' ? (
-                  <span className="px-3 text-sm text-white/35">جارٍ تحميل الكلمات...</span>
-                ) : null}
-
-                {phrasesState?.status === 'error' ? (
-                  <span className="px-3 text-sm text-white/35">تعذر تحميل الكلمات المتاحة</span>
-                ) : null}
-
-                {phrases.map((phrase) => (
-                  <button
-                    key={phrase.id}
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => onSelectPhrase?.(phrase.text_original)}
-                    className={`
-                      shrink-0 rounded-[1.15rem] border px-4 py-3 text-right transition-all duration-200
-                      ${isBusy
-                        ? 'border-white/10 bg-white/5 text-white/25'
-                        : 'border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:border-white/20 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] hover:text-white'
-                      }
-                    `}
-                  >
-                    <span className="block text-base font-medium leading-6">{phrase.text_original}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+              <div className="flex items-center gap-2.5">
                 <MotionButton
                   type="button"
                   onClick={() => onReplay?.()}
@@ -276,7 +250,7 @@ export function Interface({
                   whileHover={{ scale: canReplay && !isBusy ? 1.05 : 1 }}
                   whileTap={{ scale: canReplay && !isBusy ? 0.95 : 1 }}
                   className={`
-                    inline-flex items-center justify-center p-5 rounded-[1.35rem] transition-all duration-200
+                    inline-flex h-12 w-12 items-center justify-center rounded-[1.1rem] transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem]
                     ${canReplay && !isBusy
                       ? 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90'
                       : 'bg-white/5 text-white/25 cursor-not-allowed'
@@ -285,7 +259,7 @@ export function Interface({
                   title="إعادة تشغيل آخر إشارة"
                   aria-label="إعادة تشغيل آخر إشارة"
                 >
-                  <RotateCcw className="w-7 h-7" />
+                  <RotateCcw className="h-5 w-5 sm:h-6 sm:w-6" />
                 </MotionButton>
 
                 <MotionButton
@@ -295,7 +269,7 @@ export function Interface({
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className={`
-                    inline-flex items-center justify-center p-5 rounded-[1.35rem] transition-all duration-200
+                    inline-flex h-12 w-12 items-center justify-center rounded-[1.1rem] transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem]
                     ${isListening
                       ? 'bg-emerald-500/18 text-emerald-300 ring-1 ring-emerald-400/25 shadow-lg shadow-emerald-500/15'
                       : lookupState?.status === 'transcribing'
@@ -313,7 +287,7 @@ export function Interface({
                         exit={{ scale: 0, rotate: 90 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <Radio className="w-7 h-7" />
+                        <Radio className="h-5 w-5 sm:h-6 sm:w-6" />
                       </MotionDiv>
                     ) : (
                       <MotionDiv
@@ -323,7 +297,7 @@ export function Interface({
                         exit={{ scale: 0, rotate: -90 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <Mic className="w-7 h-7" />
+                        <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
                       </MotionDiv>
                     )}
                   </AnimatePresence>
@@ -335,20 +309,20 @@ export function Interface({
                   whileHover={{ scale: message.trim() && !isBusy ? 1.05 : 1 }}
                   whileTap={{ scale: message.trim() && !isBusy ? 0.95 : 1 }}
                   className={`
-                    inline-flex items-center justify-center rounded-[1.35rem] px-5 py-4 transition-all duration-200
+                    inline-flex h-12 w-12 items-center justify-center rounded-[1.1rem] transition-all duration-200 sm:h-[3.25rem] sm:w-[3.25rem]
                     ${message.trim() && !isBusy
                       ? 'bg-[#6366f1] text-white hover:bg-[#5457e5] shadow-lg shadow-[#6366f1]/25'
                       : 'bg-white/5 text-white/30 cursor-not-allowed'
                     }
                   `}
                 >
-                  <Send className="w-6 h-6" />
+                  <Send className="h-5 w-5 sm:h-6 sm:w-6" />
                 </MotionButton>
               </div>
 
               <div className="flex flex-1 justify-center">
-                <div className="flex w-[8.25rem] items-center gap-2 sm:w-[9rem]">
-                  <span className="shrink-0 text-[0.7rem] text-white/45">السرعة</span>
+                <div className="flex h-12 min-w-[8.5rem] items-center gap-1.5 rounded-[1.1rem] bg-white/5 px-2.5 sm:h-[3.25rem] sm:min-w-[10.5rem] sm:gap-2 sm:px-3.5">
+                  <span className="shrink-0 text-[0.66rem] text-white/45 sm:text-[0.7rem]">السرعة</span>
                   <input
                     type="range"
                     min="0.25"
@@ -358,7 +332,7 @@ export function Interface({
                     onChange={(e) => onPlaybackSpeedChange?.(Number(e.target.value))}
                     className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-white"
                   />
-                  <span className="w-7 shrink-0 text-right text-[0.68rem] tabular-nums text-white/55">
+                  <span className="w-6 shrink-0 text-right text-[0.66rem] tabular-nums text-white/55 sm:w-7 sm:text-[0.7rem]">
                     {playbackSpeed.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}
                   </span>
                 </div>

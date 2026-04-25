@@ -13,6 +13,68 @@ function createPlaybackKey() {
   return `playback-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function PhraseRail({ phrasesState, onSelectPhrase, disabled }) {
+  const phrases = phrasesState?.items ?? []
+
+  return (
+    <div
+      className="pointer-events-none fixed inset-x-0 top-0 z-10 px-3 sm:px-6 md:px-8"
+      style={{ paddingTop: '0.2rem' }}
+    >
+      <div className="mx-auto flex w-full justify-center">
+        <div
+          dir="rtl"
+          className="pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.7rem] border border-white/10 bg-[linear-gradient(180deg,rgba(47,52,58,0.76),rgba(23,26,31,0.84))] px-4 text-center shadow-[0_28px_60px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl sm:rounded-[1.9rem] sm:px-6"
+          style={{ paddingTop: '1rem', paddingBottom: '1rem' }}
+        >
+          <div
+            className="flex items-center justify-center gap-3 text-center"
+            style={{ marginBottom: '0.875rem' }}
+          >
+            <span className="hidden h-px w-10 bg-white/12 sm:block" />
+            <p className="text-[0.84rem] font-semibold tracking-[0.24em] text-white/50 sm:text-[0.78rem]">
+              كلمات سريعة
+            </p>
+            <span className="hidden h-px w-10 bg-white/12 sm:block" />
+          </div>
+
+          <div className="relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 hidden w-12 bg-gradient-to-r from-[rgba(27,30,35,0.9)] to-transparent sm:block" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 hidden w-12 bg-gradient-to-l from-[rgba(27,30,35,0.9)] to-transparent sm:block" />
+            <div className="flex items-center justify-start gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {phrasesState?.status === 'loading' ? (
+                <span className="shrink-0 px-4 text-sm text-white/40">جارٍ تحميل الكلمات...</span>
+              ) : null}
+
+              {phrasesState?.status === 'error' ? (
+                <span className="shrink-0 px-4 text-sm text-white/40">تعذر تحميل الكلمات المتاحة</span>
+              ) : null}
+
+              {phrases.map((phrase) => (
+                <button
+                  key={phrase.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelectPhrase?.(phrase.text_original)}
+                  className={`
+                    shrink-0 rounded-[1.2rem] border px-5 py-3.5 text-[0.98rem] font-medium transition-all duration-200 sm:rounded-[1.2rem] sm:px-5 sm:py-3.5 sm:text-[0.98rem]
+                    ${disabled
+                      ? 'border-white/10 bg-white/5 text-white/25'
+                      : 'border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.035))] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:border-white/20 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.06))] hover:text-white'
+                    }
+                  `}
+                >
+                  {phrase.text_original}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const isAdminRoute = window.location.pathname.startsWith('/admin')
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
@@ -188,6 +250,11 @@ function App() {
   return (
     <div className="relative w-full h-full overflow-hidden">
       <Scene playbackRequest={playbackRequest} playbackSpeed={playbackSpeed} />
+      <PhraseRail
+        phrasesState={phrasesState}
+        onSelectPhrase={handleSend}
+        disabled={lookupState?.status === 'loading' || lookupState?.status === 'transcribing'}
+      />
       <Interface
         onSend={handleSend}
         onTranscribe={handleTranscribe}
@@ -195,8 +262,6 @@ function App() {
         onReplay={handleReplay}
         canReplay={Boolean(lastPlayableMatch?.animation?.file_url)}
         lookupState={lookupState}
-        phrasesState={phrasesState}
-        onSelectPhrase={handleSend}
         playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
       />
