@@ -31,7 +31,7 @@ export function Avatar({ playbackRequest, playbackSpeed = 1 }) {
   const endingBlendStartedRef = useRef(false)
   const playbackSpeedRef = useRef(playbackSpeed)
   const isMobile = size.width < 640
-  const avatarScale = isMobile ? 1.22 : 1.5
+  const avatarScale = isMobile ? 1.22 : 1.40
   const avatarPositionY = isMobile ? -1.6 : -1.72
 
   useEffect(() => {
