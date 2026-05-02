@@ -1,5 +1,16 @@
 async function readJson(response) {
-  const payload = await response.json()
+  const contentType = response.headers.get('content-type') || ''
+  let payload
+
+  if (contentType.includes('application/json')) {
+    payload = await response.json()
+  } else {
+    const text = await response.text()
+    payload = {
+      error: text || 'Request failed',
+    }
+  }
+
   if (!response.ok) {
     throw new Error(payload.error || 'Request failed')
   }
