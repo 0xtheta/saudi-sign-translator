@@ -42,14 +42,17 @@ def dict_factory(cursor, row):
 
 
 def get_connection():
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=10)
     connection.row_factory = dict_factory
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
     return connection
 
 
 def initialize_database():
     connection = get_connection()
     cursor = connection.cursor()
+    cursor.execute("PRAGMA journal_mode = WAL")
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS animations (
@@ -488,55 +491,76 @@ class AppHandler(BaseHTTPRequestHandler):
         return json_response(self, HTTPStatus.CREATED, {"animation": record})
 
     def handle_phrase_create(self):
-        content_length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(content_length) if content_length else b"{}"
-        payload = json.loads(body.decode("utf-8"))
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(content_length) if content_length else b"{}"
+            payload = json.loads(body.decode("utf-8"))
 
-        animation_id = payload.get("animation_id", "").strip()
-        text_original = payload.get("text_original", "").strip()
-        if not animation_id or not text_original:
+            animation_id = payload.get("animation_id", "").strip()
+            text_original = payload.get("text_original", "").strip()
+            if not animation_id or not text_original:
+                return json_response(
+                    self,
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "animation_id and text_original are required"},
+                )
+
+            normalized_text = normalize_arabic_text(text_original)
+            if not normalized_text:
+                return json_response(
+                    self,
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "Alias becomes empty after normalization"},
+                )
+
+            connection = get_connection()
+            try:
+                existing_phrase = connection.execute(
+                    """
+                    SELECT id
+                    FROM phrases
+                    WHERE text_normalized = ?
+                    LIMIT 1
+                    """,
+                    (normalized_text,),
+                ).fetchone()
+            finally:
+                connection.close()
+
+            if existing_phrase:
+                return json_response(
+                    self,
+                    HTTPStatus.CONFLICT,
+                    {"error": "This normalized alias already exists"},
+                )
+
+            record = {
+                "id": str(uuid.uuid4()),
+                "animation_id": animation_id,
+                "text_original": text_original,
+                "text_normalized": normalized_text,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            insert_phrase(record)
+            return json_response(self, HTTPStatus.CREATED, {"phrase": record})
+        except json.JSONDecodeError:
             return json_response(
                 self,
                 HTTPStatus.BAD_REQUEST,
-                {"error": "animation_id and text_original are required"},
+                {"error": "Invalid JSON body"},
             )
-
-        normalized_text = normalize_arabic_text(text_original)
-        if not normalized_text:
+        except sqlite3.OperationalError as error:
             return json_response(
                 self,
-                HTTPStatus.BAD_REQUEST,
-                {"error": "Alias becomes empty after normalization"},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": f"Database error: {error}"},
             )
-
-        connection = get_connection()
-        existing_phrase = connection.execute(
-            """
-            SELECT id
-            FROM phrases
-            WHERE text_normalized = ?
-            LIMIT 1
-            """,
-            (normalized_text,),
-        ).fetchone()
-        connection.close()
-
-        if existing_phrase:
+        except Exception as error:
             return json_response(
                 self,
-                HTTPStatus.CONFLICT,
-                {"error": "This normalized alias already exists"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": f"Failed to create phrase: {error}"},
             )
-
-        record = {
-            "id": str(uuid.uuid4()),
-            "animation_id": animation_id,
-            "text_original": text_original,
-            "text_normalized": normalized_text,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        insert_phrase(record)
-        return json_response(self, HTTPStatus.CREATED, {"phrase": record})
 
     def handle_transcription(self):
         fields, files = parse_multipart_request(self)
