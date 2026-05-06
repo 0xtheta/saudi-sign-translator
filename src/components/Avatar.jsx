@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import * as THREE from 'three'
 
-const AVATAR_URL = '/avatar/avatar.glb'
+const AVATAR_URL = '/avatar/avatarRPM.glb'
 const IDLE_URL = '/animations/M_Standing_Idle_001.glb'
 const ENTER_TRANSITION_DURATION = 0.2
 const RETURN_TRANSITION_DURATION = 0.45
